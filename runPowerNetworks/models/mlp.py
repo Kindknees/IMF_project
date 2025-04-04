@@ -1,5 +1,5 @@
 from typing import OrderedDict
-import gym
+import gymnasium as gym
 import numpy as np
 
 import torch 
@@ -95,9 +95,9 @@ class SimpleMlp(TorchModelV2, nn.Module):
         self._last_flat_in = None
 
     
-    def forward(self, input_dict: Dict[str, TensorType],
-                state: List[TensorType],
-                seq_lens: TensorType):
+    def forward(self, input_dict: Dict[str, torch.tensor],
+                state: List[torch.tensor],
+                seq_lens: torch.tensor):
 
         if self.parametric_action_space:
             obs = torch.concat(
@@ -127,7 +127,7 @@ class SimpleMlp(TorchModelV2, nn.Module):
             logging.warning(f"Logits contain NaN values")
         return logits, state
 
-    def value_function(self) -> TensorType:
+    def value_function(self) -> torch.tensor:
         assert self._features is not None, "must call forward() first"
         if self._value_branch_separate:
             return self._value_branch(

@@ -7,21 +7,25 @@ import torch
 import time
 import sys
 
-from ray.rllib.agents.callbacks import DefaultCallbacks
+# from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env import BaseEnv
-from ray.rllib.evaluation import Episode, RolloutWorker
+from ray.rllib.evaluation import RolloutWorker
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.tune.logger import TBXLogger
 from ray.util.debug import log_once
 from ray.tune.result import (TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL)
-from ray.util.ml_utils.dict import flatten_dict
+# from ray.util.ml_utils.dict import flatten_dict
+from ray._private.dict import flatten_dict
 
 from tensorboardX import SummaryWriter
 from typing import TYPE_CHECKING, Dict, List, Optional, TextIO, Type
 
 if TYPE_CHECKING:
-    from ray.tune.trial import Trial  # noqa: F401
+    # from ray.tune.trial import Trial  # noqa: F401
+    from ray.tune.experiment.trial import Trial
 
 logger = logging.getLogger(__name__)
 VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32, np.int64] # from rllib
@@ -56,7 +60,7 @@ class LogDistributionsCallback(DefaultCallbacks):
     """
 
     def on_episode_end(self, *, worker: RolloutWorker, base_env: BaseEnv,
-                       policies: Dict[str, Policy], episode: Episode,
+                       policies: Dict[str, Policy], episode: SingleAgentEpisode,
                        env_index: int, **kwargs):
         # Make sure this episode is really done.
         episode.custom_metrics["num_env_steps"] = episode.last_info_for()["steps"]

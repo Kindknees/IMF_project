@@ -2,7 +2,7 @@ import numpy as np
 import grid2op
 import os
 import logging
-import gym 
+import gymnasium as gym 
 
 from collections import OrderedDict
 from grid2op.gym_compat import GymEnv,ScalerAttrConverter
@@ -10,7 +10,7 @@ from grid2op.Reward import CombinedReward
 from grid2op.Converter import IdToAct
 from lightsim2grid import LightSimBackend
 
-from gym.spaces import Box, Discrete # needed for adding connectivity matrix
+from gymnasium.spaces import Box, Discrete # needed for adding connectivity matrix
 
 from grid2op_env.medha_action_space import create_action_space, remove_redundant_actions
 from grid2op_env.utils import CustomDiscreteActions, get_sub_id_to_action
@@ -112,7 +112,7 @@ class Grid_Gym(gym.Env):
         return self.env_gym.action_space.from_gym(action_rllib)
 
     def reset(self):
-        obs = self.env_gym.reset()
+        obs, _ = self.env_gym.reset()
         if self.parametric_action_space:
             mask_topo_change = max(obs["rho"]) < self.rho_threshold
             self.update_avaliable_actions(mask_topo_change)
@@ -124,14 +124,16 @@ class Grid_Gym(gym.Env):
             self.steps = 0
 
             while (max(obs["rho"]) < self.rho_threshold) and (not done):
-                obs, _, done, _ = self.env_gym.step(self.do_nothing_actions[0])
+                obs, _, terminated, truncated, _ = self.env_gym.step(self.do_nothing_actions[0])
+                done = terminated or truncated
                 self.steps += 1
         return obs
 
 
     def step(self, action):
        
-        obs, reward, done, info = self.env_gym.step(action)
+        obs, reward, terminated, truncated, info = self.env_gym.step(action)
+        done = terminated or truncated
         if self.parametric_action_space:
             mask_topo_change = max(obs["rho"]) < self.rho_threshold
             self.update_avaliable_actions(mask_topo_change)
@@ -142,7 +144,8 @@ class Grid_Gym(gym.Env):
             cum_reward = reward
             while (max(obs["rho"]) < self.rho_threshold) and (not done):
                 #cum_reward += reward
-                obs, reward, done, info = self.env_gym.step(self.do_nothing_actions[0])
+                obs, reward, terminated, truncated, info = self.env_gym.step(self.do_nothing_actions[0])
+                done = terminated or truncated
                 cum_reward += reward
                 self.steps += 1
             
@@ -170,12 +173,13 @@ class Grid_Gym_Greedy(Grid_Gym):
     
     def reset(self):
         print(f"Survived {self.steps} real environment steps!")
-        obs = self.env_gym.reset()
+        obs, _ = self.env_gym.reset()
         
         done = False
         self.steps = 0
         while (max(obs["rho"]) < self.rho_threshold) and (not done):
-            obs, _, done, _ = self.env_gym.step(0)
+            obs, _, terminated, truncated, _ = self.env_gym.step(0)
+            done = terminated or truncated
             self.steps += 1
          # See https://discuss.ray.io/t/preprocessor-fails-on-observation-vector/614
         # order matters
@@ -227,15 +231,16 @@ class CustomGymEnv(GymEnv):
      
     def reset(self):
         if self.disable_line == -1:
-            g2op_obs = self.init_env.reset()
+            g2op_obs, _ = self.init_env.reset()
         else:
             
             done = True
             i = -1
             while done:
-                g2op_obs = self.init_env.reset()
-                g2op_obs, _, done, info = self.init_env.step(self.init_env.action_space(
+                g2op_obs, _ = self.init_env.reset()
+                g2op_obs, _, terminated, truncated, info = self.init_env.step(self.init_env.action_space(
                                     {"set_line_status":(self.disable_line,-1) } ))
+                done = terminated or truncated
                 i += 1
             if i!= 0:
                 logging.info("Had to skip {} times to get a valid observation".format(i))
@@ -254,7 +259,8 @@ class CustomGymEnv(GymEnv):
                 print_next_obs = True
                 self.reconnect_line = None
                 
-        g2op_obs, reward, done, info = self.init_env.step(g2op_act)
+        g2op_obs, reward, terminated, truncated, info = self.init_env.step(g2op_act)
+        done = terminated or truncated
 
         # Save the id of the line that was disconnected to reconnect it later
         if isinstance(info["opponent_attack_line"], np.ndarray):
@@ -293,14 +299,15 @@ class SubstationGreedyEnv(CustomGymEnv):
 
     def reset(self):
         if self.disable_line == -1:
-            g2op_obs = self.init_env.reset()
+            g2op_obs, _ = self.init_env.reset()
         else:
             done = True
             i = -1
             while done:
-                g2op_obs = self.init_env.reset()
-                g2op_obs, _, done, info = self.init_env.step(self.init_env.action_space(
+                g2op_obs, _ = self.init_env.reset()
+                g2op_obs, _, terminated, truncated, info = self.init_env.step(self.init_env.action_space(
                                     {"set_line_status":(self.disable_line,-1) } ))
+                done = terminated or truncated
                 i += 1
             if i!= 0:
                 logging.info("Had to skip {} times to get a valid observation".format(i))
@@ -324,7 +331,8 @@ class SubstationGreedyEnv(CustomGymEnv):
                 self.reconnect_line = None
 
         self.g2op_act = g2op_act
-        g2op_obs, reward, done, info = self.init_env.step(g2op_act)
+        g2op_obs, reward, terminated, truncated, info = self.init_env.step(g2op_act)
+        done = terminated or truncated
         self.last_obs = g2op_obs # needed for the greedy agent
 
         if isinstance(info["opponent_attack_line"], np.ndarray):
@@ -478,7 +486,7 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
                                                                     ))
     if conn_matrix: # whether to add the connectivity matrix to the observation. 
         shape_ = (env.dim_topo, env.dim_topo)
-        static_connectivity_matrix = env.reset().connectivity_matrix(as_csr_matrix=False) # all elements on bar 1
+        static_connectivity_matrix, _ = env.reset().connectivity_matrix(as_csr_matrix=False) # all elements on bar 1
         env_gym.observation_space.add_key("connectivity_matrix", # this matrix shows what elements can theoretically be connected to each other
                                   lambda obs: static_connectivity_matrix, #obs.connectivity_matrix()
                                   Box(shape=shape_,

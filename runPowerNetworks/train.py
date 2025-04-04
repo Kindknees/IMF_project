@@ -14,13 +14,16 @@ import pickle
 
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.typing import Dict, TensorType, List, ModelConfigDict
-from ray.rllib.agents import ppo, sac  # import the type of agents
+# from ray.rllib.agents import ppo, sac  # import the type of agents
+from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.algorithms.sac import SACConfig
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.typing import Dict, TensorType, List, ModelConfigDict
 
 from ray import tune
 from ray.tune.registry import register_env
-from ray.tune.integration.wandb import WandbLoggerCallback
+from ray.air.integrations.wandb import WandbLoggerCallback
+# from ray.tune.integration.wandb import WandbLoggerCallback
 from ray.tune.logger import TBXLogger
 from ray.tune import CLIReporter
 from ray.tune.stopper import CombinedStopper, MaximumIterationStopper
@@ -44,7 +47,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-LOCAL_DIR = "log_files"
+LOCAL_DIR = os.path.abspath("log_files")
 
 if __name__ == "__main__":
     random.seed(2137)
@@ -82,6 +85,18 @@ if __name__ == "__main__":
         logging.info(f"{arg.upper()}: {getattr(args, arg)}")
 
     config = preprocess_config(yaml.load(open(args.algorithm_config_path), Loader=get_loader()))["tune_config"]
+    config["enable_rl_module_and_learner"] = False
+    config["rollout_fragment_length"] = "auto"
+
+    # # 停用 RLModule 和 Learner API
+    # config["api_stack"] = {"enable_rl_module_and_learner": False}
+
+    # # 確保 model 配置使用舊 API
+    # if "model" not in config:
+    #     config["model"] = {}
+    # config["model"]["custom_model"] = "fcn"  # 明確指定自訂模型
+    # config["model"]["custom_model_config"] = {}  # 如果需要傳遞額外參數
+
     if args.num_workers != -1: # overwrite config if necessary
         config["num_workers"] = args.num_workers
     if args.seed != -1:
@@ -92,9 +107,9 @@ if __name__ == "__main__":
     
     
     if args.algorithm == "ppo":
-        trainer = ppo.PPOTrainer
+        trainer = PPOConfig().environment(env="Grid_Gym", env_config=config["env_config"]).build
     elif args.algorithm == "sac":
-        trainer = sac.SACTrainer
+        trainer = SACConfig().environment(env="Grid_Gym", env_config=config["env_config"]).build
     else:
         raise ValueError("Unknown algorithm. Choices are: ppo, sac")
 
@@ -108,15 +123,18 @@ if __name__ == "__main__":
             #                         num_iters_no_improvement = args.num_iters_no_improvement)
                                     )
         
+        algorithm_name = args.algorithm.upper()
+        
         analysis = ray.tune.run(
-                trainer,
+                # trainer,
+                algorithm_name,
                 progress_reporter = reporter,
                 config = config,
                 name = args.group,
-                local_dir= LOCAL_DIR,
+                storage_path = LOCAL_DIR,
                 checkpoint_freq=args.checkpoint_freq,
                 stop = stopper,
-                checkpoint_at_end=True,
+                # checkpoint_at_end=True,
                 num_samples = args.num_samples,
                 # callbacks=[WandbLoggerCallback(
                 #             project=args.project_name,

@@ -5,7 +5,7 @@ import torch
 from grid2op.gym_compat import GymEnv
 from grid2op.PlotGrid import PlotMatplot
 
-from gym.spaces import Box
+from gymnasium.spaces import Box
 
 
 def graph_converter(obs, env, hazard_threshold = 0.9):

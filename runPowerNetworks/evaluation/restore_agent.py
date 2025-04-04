@@ -4,7 +4,9 @@ import json
 import os
 import logging
 
-from ray.rllib.agents import ppo, sac # import the type of agents
+# from ray.rllib.agents import ppo, sac # import the type of agents
+from ray.rllib.algorithms.ppo import ppo
+from ray.rllib.algorithms.sac import sac
 from grid2op_env.grid_to_gym import Grid_Gym
 from typing import Tuple, Union, Optional
 

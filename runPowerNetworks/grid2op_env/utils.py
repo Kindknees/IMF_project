@@ -1,4 +1,4 @@
-from gym.spaces import Discrete
+from gymnasium.spaces import Discrete
 from collections import defaultdict, OrderedDict
 
 from grid2op.Action import PowerlineSetAction

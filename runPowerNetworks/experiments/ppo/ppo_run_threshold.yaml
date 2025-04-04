@@ -38,6 +38,8 @@ env_config_val: &env_config_val
 tune_config:
   env: Grid_Gym
   env_config: *env_config_train  # config to pass to env class
+  api_stack:
+    enable_rl_module_and_learner: false  # 停用新 API
   model : *model_config
   log_level: INFO
   framework: torch
@@ -51,11 +53,13 @@ tune_config:
   sgd_minibatch_size: 256 #!choice [256,512] # 64
   train_batch_size: 1024 #!choice [1024, 2048] #2048
   num_sgd_iter: 5 #!choice [2,5,10,20,40]
-  ignore_worker_failures: True # continue if a worker crashes
+  ignore_env_runner_failures: True # continue if a worker crashes
   num_workers : !choice [2,4,6] #8
   callbacks : LogDistributionsCallback
   evaluation_interval: 10
-  evaluation_num_episodes : 100
+  # evaluation_num_episodes : 100
+  evaluation_duration: 10       # 新參數：評估持續時間
+  evaluation_duration_unit: "episodes"  # 新參數：單位，可以是 "episodes" 或 "timesteps"
   evaluation_config: 
     env: Grid_Gym
     env_config: *env_config_val # use the validation env

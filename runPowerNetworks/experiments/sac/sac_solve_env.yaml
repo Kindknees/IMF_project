@@ -55,7 +55,9 @@ tune_config:
   num_workers : 4 #!choice [4,6,8,10] #!choice [8,10,12,14] #!choice [2,6,10] 
   callbacks : LogDistributionsCallback
   evaluation_interval: 20
-  evaluation_num_episodes : 100
+  # evaluation_num_episodes : 100
+  evaluation_duration: 10       # 新參數：評估持續時間
+  evaluation_duration_unit: "episodes"  # 新參數：單位，可以是 "episodes" 或 "timesteps"
   evaluation_config: 
     env: Grid_Gym
     env_config: *env_config_val # use the validation env

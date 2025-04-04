@@ -1,0 +1,24 @@
+torch
+ray[rllib]
+Grid2Op
+tabulate
+gymnasium
+numba
+tqdm
+pillow
+dm_tree
+scikit-image
+lz4
+python-dotenv
+wandb
+tensorboardX
+lightsim2grid
+matplotlib
+seaborn
+scikit-network
+
+# 安裝 PyG + scikit-network（for Colab）
+# !pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0
+# !pip install pyg-lib torch-scatter torch-sparse torch-cluster torch-spline-conv \
+#     -f https://data.pyg.org/whl/torch-2.1.0+cpu.html
+# !pip install torch-geometric scikit-network
