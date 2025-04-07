@@ -120,7 +120,7 @@ def skip_to_next_day(env: grid2op.Environment.Environment,
     
     if disable_line != -1:
         env.fast_forward_chronics(ts_next_day-1)
-        _, _, _, info = env.step(env.action_space(
+        _, _, _, _, info = env.step(env.action_space(
             {"set_line_status":(disable_line,-1) }))
         return info 
     else:
@@ -186,7 +186,7 @@ if __name__ == '__main__':
 
         #Disable lines, if any
         if disable_line != -1:
-            obs, _, _, info = env.step(env.action_space(
+            obs, _, _, _, info = env.step(env.action_space(
                             {"set_line_status":(disable_line,-1) }))
         else:
             info = {'exception':[]}
@@ -218,7 +218,7 @@ if __name__ == '__main__':
                 logger.info(f'Day {ts_to_day(env.nb_time_step)} completed.')
                 total_days_completed += 1
                 total_days += 1 
-                obs, _, _, _ = env.step(env.action_space({'set_bus': 
+                obs, _, _, _, _ = env.step(env.action_space({'set_bus': 
                                                         reference_topo_vect}))
                 records = np.concatenate((records, day_records), axis=0)
                 day_records = empty_records(obs_vect_size)
@@ -226,8 +226,8 @@ if __name__ == '__main__':
                 continue
 
             act = wrapped_agent.act(obs, reward = None, done= None)
-            obs, reward, done, info = env.step(act)
-                
+            obs, reward, terminated, truncated, info = env.step(act)
+            done = terminated or truncated
             #If the game is done at this point, this indicated a (failed) game over
             #If so, reset the environment to the start of next day and discard the records
             if env.done:

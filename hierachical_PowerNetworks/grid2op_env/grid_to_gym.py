@@ -31,6 +31,8 @@ from definitions import ROOT_DIR
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.models import ModelCatalog
 
+from gymnasium.spaces import Discrete, Dict, Box
+
 logger = logging.getLogger(__name__)
 class CustomGymEnv(GymEnv):
     """
@@ -71,9 +73,10 @@ class CustomGymEnv(GymEnv):
             i = -1
             while done:
                 g2op_obs = self.init_env.reset()
-                g2op_obs, _, done, info = self.init_env.step(self.init_env.action_space(
+                g2op_obs, _, terminated, truncated, info = self.init_env.step(self.init_env.action_space(
                                     {"set_line_status":(self.disable_line,-1) } ))
                 i += 1
+                done = terminated or truncated
             if i!= 0:
                 logging.info("Had to skip {} times to get a valid observation".format(i))
         
@@ -92,7 +95,8 @@ class CustomGymEnv(GymEnv):
                 print_next_obs = True
                 self.reconnect_line = None
                 
-        g2op_obs, reward, done, info = self.init_env.step(g2op_act)
+        g2op_obs, reward, terminated, truncated, info = self.init_env.step(g2op_act)
+        done = terminated or truncated
         # if info['is_illegal'] or info["is_ambiguous"]:
         #     print("illegal action: ", g2op_act)
         #     print("Info",info)
@@ -108,6 +112,9 @@ class CustomGymEnv(GymEnv):
 
         gym_obs = self.observation_space.to_gym(g2op_obs)
         return gym_obs, float(reward), done, info
+    def close(self):
+        pass
+
 
 class SubstationGreedyEnv(CustomGymEnv):
 
@@ -133,8 +140,9 @@ class SubstationGreedyEnv(CustomGymEnv):
             i = -1
             while done:
                 g2op_obs = self.init_env.reset()
-                g2op_obs, _, done, info = self.init_env.step(self.init_env.action_space(
+                g2op_obs, _, terminated, truncated, info = self.init_env.step(self.init_env.action_space(
                                     {"set_line_status":(self.disable_line,-1) } ))
+                done = terminated or truncated
                 i += 1
             if i!= 0:
                 logging.info("Had to skip {} times to get a valid observation".format(i))
@@ -161,7 +169,8 @@ class SubstationGreedyEnv(CustomGymEnv):
 
         # print("gym action", gym_action)
         self.g2op_act = g2op_act
-        g2op_obs, reward, done, info = self.init_env.step(g2op_act)
+        g2op_obs, reward, terminated, truncated, info = self.init_env.step(g2op_act)
+        done = terminated or truncated
         self.last_obs = g2op_obs # needed for the greedy agent
         # if (g2op_obs.topo_vect == -1).any():
         #     print("g2op_obs rho: ", g2op_obs.rho)
@@ -192,6 +201,7 @@ class SubstationGreedyEnv(CustomGymEnv):
         if hasattr(self, "observation_space") and self.observation_space is not None:
             self.observation_space.close()
         self.observation_space = None
+
 
 class Grid_Gym(gym.Env):
     """
@@ -285,31 +295,49 @@ class Grid_Gym(gym.Env):
         """
         return self.env_gym.action_space.from_gym(action_rllib)
 
-    def reset(self):
-        obs = self.env_gym.reset()
+    def reset(self, *, seed=None, options=None):
+        # 假設 self.env_gym 是舊的 gym 環境，嘗試適配
+        try:
+            obs = self.env_gym.reset(seed=seed, options=options)
+            info = {}
+        except TypeError:
+            # 如果底層環境不支援 seed 和 options，則忽略這些參數
+            obs = self.env_gym.reset()
+            info = {}
         if self.parametric_action_space:
             mask_topo_change = max(obs["rho"]) < self.rho_threshold
             self.update_avaliable_actions(mask_topo_change)
+            obs = {"action_mask": self.action_mask, "grid": obs}
             # if not mask_topo_change:
             #     print("all actions avaliable", max(obs["rho"]))
             #     print("sum of the mask", self.action_mask)
 
-            return {"action_mask": self.action_mask, "grid": obs}
+            # return {"action_mask": self.action_mask, "grid": obs}
 
         elif self.run_until_threshold:
-            done = False
+            terminated = False
+            truncated = False
             self.steps = 0
             # print("Entering the loop")
             #start = time.time()
             while (max(obs["rho"]) < self.rho_threshold) and (not done):
-                obs, _, done, _ = self.env_gym.step(self.do_nothing_actions[0])
+                obs, _, terminated, truncated, _ = self.env_gym.step(self.do_nothing_actions[0])
+                done = terminated or truncated
                 self.steps += 1
-        return obs
+        return obs, info
 
 
     def step(self, action):
        
-        obs, reward, done, info = self.env_gym.step(action)
+        try:
+            obs, reward, terminated, truncated, info = self.env_gym.step(action)
+            done = terminated or truncated
+        except ValueError:
+            # 如果底層環境返回舊格式，適配為新格式
+            obs, reward, done, info = self.env_gym.step(action)
+            terminated = done
+            truncated = False  # 假設無截斷，除非有明確邏輯
+        
         if self.parametric_action_space:
             mask_topo_change = max(obs["rho"]) < self.rho_threshold
             self.update_avaliable_actions(mask_topo_change)
@@ -320,7 +348,8 @@ class Grid_Gym(gym.Env):
             cum_reward = reward
             while (max(obs["rho"]) < self.rho_threshold) and (not done):
                 #cum_reward += reward
-                obs, reward, done, info = self.env_gym.step(self.do_nothing_actions[0])
+                obs, reward, terminated, truncated, info = self.env_gym.step(self.do_nothing_actions[0])
+                done = terminated or truncated
                 cum_reward += reward
                 self.steps += 1
             #reward = ((self.steps - self.begin_step)/100)*50 # experiment for sac
@@ -340,20 +369,9 @@ class Grid_Gym(gym.Env):
                 info["steps"] = self.steps
             if self.log_reward:
                 reward = np.log2(max(1,reward))
-        return obs, reward, done, info
+        return obs, reward, terminated, truncated, info
     def close(self):
-        """
-        Clean up resources and close the underlying Grid2Op environment.
-        """
-        # 關閉 Gym 包裝的 Grid2Op 環境
-        if hasattr(self.env_gym, "close"):
-            self.env_gym.close()
-        # 關閉原始 Grid2Op 環境
-        if hasattr(self.org_env, "close"):
-            self.org_env.close()
-        # 釋放引用
-        self.env_gym = None
-        self.org_env = None
+        pass
 
 
 class HierarchicalGridGym(MultiAgentEnv):
@@ -374,6 +392,31 @@ class HierarchicalGridGym(MultiAgentEnv):
         self.num_to_sub = {i:k for i,k in enumerate(self.sub_id_to_action_num.keys())}
         self.info = {"steps": 0}
 
+        # 定義動作空間
+        self.action_spaces = {
+            self.high_level_agent_id: Discrete(len(self.num_to_sub)),
+            self.low_level_agent_id: self.env_gym.action_space
+        }
+
+        # 定義觀測空間
+        regular_obs_space = self.env_gym.observation_space
+        if env_config.get("use_parametric", False):
+            regular_obs_space = regular_obs_space["grid"]
+        self.observation_spaces = {
+            self.high_level_agent_id: Dict({
+                "regular_obs": regular_obs_space,
+                "chosen_action": Discrete(106)
+            }),
+            self.low_level_agent_id: Dict({
+                "regular_obs": regular_obs_space,
+                "action_mask": Box(low=0, high=1, shape=(106,), dtype=np.float32),
+                "chosen_substation": Discrete(len(self.num_to_sub))
+            })
+        }
+
+        logger.debug("The sub_id_to_action_num is", self.sub_id_to_action_num)
+        logger.debug("The num_to_sub is", self.num_to_sub)
+
         logger.debug("The sub_id_to_action_num is", self.sub_id_to_action_num)
         logger.debug("The num_to_sub is", self.num_to_sub)
 
@@ -390,18 +433,19 @@ class HierarchicalGridGym(MultiAgentEnv):
 
         return action_mask
 
-    def reset(self):
-        self.cur_obs = self.env_gym.reset()
+    def reset(self, *, seed=None, options=None):
+        self.cur_obs = self.env_gym.reset(seed=seed, options=options)
         self.high_level_pred = None # the substation to modify
         self.steps_remaining_at_level = None
     
         one_hot_encoded_action = np.zeros(106)
 
         obs = {self.high_level_agent_id: {
-                        "regular_obs": self.cur_obs,
-                        "chosen_action": 0}
-        }
-        return obs
+            "regular_obs": self.cur_obs["grid"] if isinstance(self.cur_obs, dict) else self.cur_obs,
+            "chosen_action": 0
+        }}
+        info = {self.high_level_agent_id: {}}
+        return obs, info
 
     def step(self, action_dict):
         assert len(action_dict) == 1, action_dict
@@ -412,8 +456,7 @@ class HierarchicalGridGym(MultiAgentEnv):
 
     def _high_level_step(self, action, cur_obs = None):
         logger.debug("High level agent sets goal")
-        self.high_level_pred = action       
-        # Create a mask using the predicited action
+        self.high_level_pred = action
         action_mask = self.map_sub_to_mask()
         
         if cur_obs is not None:
@@ -421,41 +464,34 @@ class HierarchicalGridGym(MultiAgentEnv):
             
         obs = {self.low_level_agent_id: {
             "action_mask": action_mask,
-            "regular_obs":self.cur_obs ,
+            "regular_obs": self.cur_obs["grid"] if isinstance(self.cur_obs, dict) else self.cur_obs,
             "chosen_substation": self.high_level_pred,
         }}
         rew = {self.low_level_agent_id: 0}
-        done = {"__all__": False}
-        return obs, rew, done, {self.low_level_agent_id: self.info}
+        terminated = {"__all__": False}  # 高層步驟不結束環境
+        truncated = {"__all__": False}   # 無時間限制，假設無截斷
+        info = {self.low_level_agent_id: self.info}
+        return obs, rew, terminated, truncated, info
 
     def _low_level_step(self, action):
         logger.debug("Low level agent step {}".format(action))
-        # Step in the actual env
-        f_obs, f_rew, f_done, f_info = self.env_gym.step(action)
-        # Get the number of survived steps
+        f_obs, f_rew, f_terminated, f_truncated, f_info = self.env_gym.step(action)
         self.info["steps"] = f_info.get("steps", 0)
         self.cur_obs = f_obs
 
-        # Calculate low-level agent observation and reward
-        rew = {self.low_level_agent_id: f_rew}
-
-        # Handle env termination & transitions back to higher level
-        done = {"__all__": False}
-        if f_done:
-            done["__all__"] = True
-            logger.debug("high level final reward {}".format(f_rew))
-
-        one_hot_encoded_action = np.zeros(106)
-        one_hot_encoded_action[action] = 1
-        rew = {self.low_level_agent_id: f_rew,
-               self.high_level_agent_id: f_rew}
-
-        obs = {self.high_level_agent_id: {
-                        "regular_obs": f_obs,
-                        "chosen_action": action}
+        rew = {
+            self.low_level_agent_id: f_rew,
+            self.high_level_agent_id: f_rew
         }
-
-        return obs, rew, done, {self.high_level_agent_id: self.info}
+        # 直接使用底層環境的 terminated 和 truncated
+        terminated = {"__all__": f_terminated}
+        truncated = {"__all__": f_truncated}
+        obs = {self.high_level_agent_id: {
+            "regular_obs": f_obs["grid"] if isinstance(f_obs, dict) else f_obs,
+            "chosen_action": action
+        }}
+        info = {self.high_level_agent_id: self.info}
+        return obs, rew, terminated, truncated, info
 
 class Grid_Gym_Greedy(Grid_Gym):
 
@@ -479,7 +515,8 @@ class Grid_Gym_Greedy(Grid_Gym):
         done = False
         self.steps = 0
         while (max(obs["rho"]) < self.rho_threshold) and (not done):
-            obs, _, done, _ = self.env_gym.step(0)
+            obs, _, terminated, truncated, _ = self.env_gym.step(0)
+            done = terminated or truncated
             self.steps += 1
          # See https://discuss.ray.io/t/preprocessor-fails-on-observation-vector/614
         # order matters
@@ -488,12 +525,14 @@ class Grid_Gym_Greedy(Grid_Gym):
 
     def step(self, action):
        
-        obs, reward, done, info = self.env_gym.step(action)
+        obs, reward, terminated, truncated, info = self.env_gym.step(action)
+        done = terminated or truncated
         self.begin_step = self.steps
         cum_reward = reward
         while (max(obs["rho"]) < self.rho_threshold) and (not done):
            # cum_reward += reward
-            obs, reward, done, info = self.env_gym.step(0)
+            obs, reward, terminated, truncated, info = self.env_gym.step(0)
+            done = terminated or truncated
             cum_reward += reward
             self.steps += 1
         reward = cum_reward*self.reward_scaling_factor 

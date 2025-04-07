@@ -188,12 +188,14 @@ class Grid_Gym_Greedy(Grid_Gym):
 
     def step(self, action):
        
-        obs, reward, done, info = self.env_gym.step(action)
+        obs, reward, terminated, truncated, info = self.env_gym.step(action)
+        done = terminated or truncated
         self.begin_step = self.steps
         cum_reward = reward
         while (max(obs["rho"]) < self.rho_threshold) and (not done):
            # cum_reward += reward
-            obs, reward, done, info = self.env_gym.step(0)
+            obs, reward, terminated, truncated, info = self.env_gym.step(0)
+            done = terminated or truncated
             cum_reward += reward
             self.steps += 1
         reward = cum_reward*self.reward_scaling_factor 

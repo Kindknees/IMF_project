@@ -200,8 +200,9 @@ class EvaluationRunner:
                     act = act + reconnect_act
                     reconnect_line = None
 
-                obs, reward, done, info = self.env.step(act)
-
+                obs, reward, terminated, truncated, info = self.env.step(act)
+                done = terminated or truncated
+                
                 if isinstance(info["opponent_attack_line"], np.ndarray):
                     if info["opponent_attack_duration"] == 1:
                         line_id_attacked = np.argwhere(info["opponent_attack_line"]).flatten()[0]   

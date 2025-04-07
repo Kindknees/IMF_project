@@ -88,15 +88,6 @@ if __name__ == "__main__":
     config["enable_rl_module_and_learner"] = False
     config["rollout_fragment_length"] = "auto"
 
-    # # 停用 RLModule 和 Learner API
-    # config["api_stack"] = {"enable_rl_module_and_learner": False}
-
-    # # 確保 model 配置使用舊 API
-    # if "model" not in config:
-    #     config["model"] = {}
-    # config["model"]["custom_model"] = "fcn"  # 明確指定自訂模型
-    # config["model"]["custom_model_config"] = {}  # 如果需要傳遞額外參數
-
     if args.num_workers != -1: # overwrite config if necessary
         config["num_workers"] = args.num_workers
     if args.seed != -1:

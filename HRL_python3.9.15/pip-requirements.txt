@@ -1,0 +1,4 @@
+grid2op==1.7.1
+lightsim2grid==0.10.1.post1
+ray==1.9.0
+wandb==0.15.0

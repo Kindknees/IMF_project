@@ -226,7 +226,8 @@ if __name__ == '__main__':
                 continue
 
             act = wrapped_agent.act(obs, reward = None, done= None)
-            obs, reward, done, info = env.step(act)
+            obs, reward, terminated, truncated, info = env.step(act)
+            done = terminated or truncated
                 
             #If the game is done at this point, this indicated a (failed) game over
             #If so, reset the environment to the start of next day and discard the records
